@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IMPORTANT: Protect sensitive files
+.env
+credentials.json
+token.json
+
+# Logs
+*.log
+classification_log.json
+logs/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
