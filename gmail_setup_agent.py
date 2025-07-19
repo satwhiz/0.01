@@ -113,8 +113,7 @@ def create_labels() -> str:
 @tool(
     name="classify_all_emails",
     description="Classify all emails in Gmail and apply appropriate labels",
-    show_result=True,
-    requires_confirmation=True
+    show_result=True
 )
 def classify_all_emails(max_emails: int = 500) -> str:
     """Main function to classify all emails"""
@@ -255,10 +254,10 @@ def classify_all_emails(max_emails: int = 500) -> str:
 🎉 Email Classification Complete!
 
 📈 **Results Summary:**
-• Total emails processed: {len(emails)}
-• Successfully classified: {classified_count}
-• Errors encountered: {error_count}
-• Success rate: {(classified_count/len(emails)*100):.1f}%
+- Total emails processed: {len(emails)}
+- Successfully classified: {classified_count}
+- Errors encountered: {error_count}
+- Success rate: {(classified_count/len(emails)*100):.1f}%
 
 📊 **Classification Breakdown:**
 """
