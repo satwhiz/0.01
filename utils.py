@@ -1,5 +1,5 @@
 """
-Utility functions for Gmail email classification
+Utility functions for Gmail email classification - FIXED VERSION
 """
 import base64
 import json
@@ -93,7 +93,7 @@ def extract_message_body(payload: Dict[str, Any]) -> str:
 
 def is_email_old(email_data: Dict[str, Any], days: int = None) -> bool:
     """
-    Check if email is older than specified days
+    Check if email is older than specified days - FIXED VERSION
     
     Args:
         email_data: Gmail message object
@@ -106,13 +106,25 @@ def is_email_old(email_data: Dict[str, Any], days: int = None) -> bool:
         days = config.HISTORY_DAYS
     
     try:
+        # Gmail's internalDate is in milliseconds, convert to seconds
         email_timestamp = int(email_data['internalDate']) / 1000
         email_date = datetime.fromtimestamp(email_timestamp)
         cutoff_date = datetime.now() - timedelta(days=days)
-        return email_date < cutoff_date
+        
+        is_old = email_date < cutoff_date
+        
+        # ADDED: Debug logging to understand what's happening
+        if config.DEBUG:
+            print(f"Email date: {email_date.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Cutoff date: {cutoff_date.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Email is {'old' if is_old else 'recent'} (threshold: {days} days)")
+        
+        return is_old
+        
     except (KeyError, ValueError, TypeError) as e:
         if config.DEBUG:
             print(f"Error checking email age: {e}")
+            # If we can't determine the age, treat as recent to ensure AI classification
         return False
 
 def format_thread_context(thread_messages: List[Dict[str, Any]]) -> str:
@@ -148,39 +160,108 @@ def get_classification_prompt(email_content: str, thread_content: str = "") -> s
     Returns:
         Formatted prompt for classification
     """
-    return f"""You are an AI agent responsible for classifying Gmail emails into one of these mutually exclusive labels:
+    return f"""**Gmail Email Classifier – Label Assignment Instructions**
 
-**To Do**: Requires user action (reply, review, decision, meeting invite)
-- Include if: Email requests reply, input, task, or approval
-- Include if: Email includes meeting invites or calendar coordination
-- Rule: Applies only while user action is pending
+You are an AI agent responsible for classifying Gmail emails into one of the following **mutually exclusive** labels:
+• To Do
+• Awaiting Reply  
+• FYI
+• Done
+• Spam
+• History
 
-**Awaiting Reply**: User has replied, waiting for others to respond
-- Rule: Applies only after user has taken action
-- Rule: Thread is active, responsibility is on another person
+Use the following **rules, definitions, and label hierarchy** to classify each email based on its content and context.
 
-**FYI**: Purely informational, no action or reply required
-- Rule: No action, decision, or engagement expected
-- May contain useful context or updates
+**1. To Do**
+**Definition:** Label an email as **To Do** if it requires the **user to take action**, such as replying, reviewing, scheduling, or making a decision.
 
-**Done**: No action needed, acknowledgment/completion message
-- Use when: Email acknowledges, thanks, or closes conversation
-- Use when: Communicates completion, agreement, or confirmation
+**Include if:**
+• The email requests a reply, input, task, or approval
+• The email includes meeting invites or requires calendar coordination
+• Someone is asking for something to be completed, reviewed, or decided
 
-**Spam**: Promotional, automated, or low-value content
-- Categories: Ads, marketing, app notifications, newsletters
+**Rules:**
+• Applies **only while user action is pending**
+• If the user has already replied, re-evaluate:
+  - If others are expected to respond → move to **Awaiting Reply**
+  - If the thread is complete → move to **History**
 
-**History**: Resolved/inactive threads, completed items
-- Use if: Thread is closed, acknowledged, or previously replied to but inactive
-- Use if: To Do was replied to and no further action expected
+**Examples:**
+• "Can you approve this by EOD?"
+• "Are you available for a call tomorrow?"  
+• "Please confirm your attendance"
+• "Can you complete the work by tomorrow?"
 
-**Classification Algorithm (in order):**
-1. Check for To Do → If user action required, label as To Do
-2. If not To Do, check for Awaiting Reply → If user waiting after replying
-3. If not Awaiting Reply, check for FYI → If purely informational
-4. If not FYI, check for Done → If acknowledgment/completion message
-5. If not Done, check for SPAM → If promotional/automated
-6. If none apply, label as History
+**2. Awaiting Reply**
+**Definition:** Label an email as **Awaiting Reply** if the **user has replied**, and is now **waiting on someone else** to take action or respond.
+
+**Rules:**
+• Applies only **after the user has taken action**
+• Thread is still **active**, but responsibility is now on another person
+
+**Examples:**
+• "I've shared the document, waiting for your feedback"
+• "Let me know what you decide"
+• "Following up on the earlier thread"
+
+**3. FYI**
+**Definition:** Label an email as **FYI** if it is **purely informational**. These messages are for **awareness only** and require **no action or reply**.
+
+**Rules:**
+• No action, decision, or engagement expected
+• May contain useful context or updates
+
+**Examples:**
+• "Monthly performance dashboard is now available"
+• "Here's the new policy update for your reference"
+• "Team event photos from last week"
+
+**4. Done**
+**Definition:** Label an email as **Done** if it is clear that **no action is needed** and **no response is expected**.
+
+**Use Done when:**
+• The email was sent to **acknowledge**, **thank**, or **close a conversation**
+• It communicates **completion, agreement, or confirmation**
+
+**Examples:**
+• "Thanks, I've noted that"
+• "All good from my side"
+• "Looks fine. No changes needed"
+
+**5. Spam**
+**Definition:** Label an email as **Spam** if it is **promotional, automated, or low-value**, and does **not require attention**.
+
+**Typical categories:**
+• Ads and marketing emails
+• App or service notifications  
+• Social updates or newsletters
+
+**Examples:**
+• "Flash Sale: 50% off this weekend only!"
+• "You've unlocked a new badge"
+• "Your weekly usage report is ready"
+
+**6. History**
+**Definition:** Label an email as **History** if it is part of a **resolved, inactive, or archived thread**.
+
+**Rules:**
+• Use if the thread is **closed**, **acknowledged**, or **previously replied to** but now inactive
+• Also used when a **To Do** was replied to, and **no further action** is expected
+
+**Examples:**
+• "Thanks for your input. All sorted now"
+• "Noted, closing this issue"
+• "Appreciate the update — no further questions"
+
+**Classification Algorithm (Decision Sequence)**
+Classify each email using the following order:
+
+1. **Check for To Do** → If user action or reply is required, label as **To Do**
+2. **If not To Do, check for Awaiting Reply** → If user is waiting for others after having replied → **Awaiting Reply**
+3. **If not Awaiting Reply, check for FYI** → If email is purely informational → **FYI**
+4. **If not FYI, check for Done** → If no action is needed, but it's a conclusion/acknowledgment message → **Done**
+5. **If not Done, check for Spam** → If email is promotional or auto-generated → **Spam**
+6. **If none of the above apply**, label as **History**
 
 **Email Content to Classify:**
 {email_content}
@@ -188,10 +269,11 @@ def get_classification_prompt(email_content: str, thread_content: str = "") -> s
 {thread_content}
 
 **Instructions:**
-1. Analyze the email content and thread context
-2. Apply the classification rules in the specified order
-3. Return ONLY the label name ({', '.join(config.LABELS)})
-4. Be decisive - choose the first rule that applies
+1. Analyze the email content and thread context carefully
+2. Apply the classification rules in the exact order specified above
+3. Return ONLY the label name: {', '.join(config.LABELS)}
+4. Be decisive - choose the FIRST rule that applies
+5. For emails asking for tasks, responses, or decisions, always choose "To Do"
 
 Classification:"""
 
@@ -268,3 +350,35 @@ def save_classification_log(message_id: str, label: str, email_content: str, suc
             f.write(json.dumps(log_entry) + "\n")
     except Exception as e:
         print(f"Error saving classification log: {e}")
+
+# ADDED: Test function to verify date parsing
+def test_email_age():
+    """Test function to verify email age calculation"""
+    print("🧪 Testing email age calculation...")
+    
+    # Create a test email data structure
+    now = datetime.now()
+    
+    # Test cases
+    test_cases = [
+        ("1 day ago", now - timedelta(days=1)),
+        ("5 days ago", now - timedelta(days=5)),
+        ("15 days ago", now - timedelta(days=15)),
+        ("Today", now),
+    ]
+    
+    for test_name, test_date in test_cases:
+        # Convert to Gmail's millisecond timestamp format
+        test_timestamp = int(test_date.timestamp() * 1000)
+        test_email = {'internalDate': str(test_timestamp)}
+        
+        is_old = is_email_old(test_email, 10)
+        print(f"{test_name}: {test_date.strftime('%Y-%m-%d %H:%M:%S')} -> {'Old' if is_old else 'Recent'}")
+
+if __name__ == "__main__":
+    # Run test if this file is executed directly
+    import sys
+    sys.path.append('.')
+    from config import config
+    config.DEBUG = True
+    test_email_age()

@@ -1,5 +1,5 @@
 """
-Gmail Email Classification Setup Agent
+Gmail Email Classification Setup Agent - FIXED VERSION
 This agent creates labels and classifies all existing emails in Gmail.
 """
 
@@ -180,41 +180,47 @@ def classify_all_emails(max_emails: int = 500) -> str:
             # Classify each message in the thread
             for email in thread_messages:
                 try:
-                    # Check if email is older than history_days - skip AI classification
+                    email_id = email['id']
+                    
+                    # FIXED: Check if email is older than history_days
                     if is_email_old(email, agent.history_days):
                         label = "History"
                         if config.DEBUG:
-                            print(f"Email {email['id']} is older than {agent.history_days} days - auto-classified as History")
+                            print(f"Email {email_id} is older than {agent.history_days} days - auto-classified as History")
                     else:
-                        # Get the last message in the thread (most recent)
-                        last_message = thread_messages[-1] if thread_messages else email
+                        if config.DEBUG:
+                            print(f"Email {email_id} is recent - running AI classification")
                         
-                        # Extract email content
-                        email_content = extract_email_content(last_message)
+                        # Extract email content for the current email (not just the last one)
+                        email_content = extract_email_content(email)
                         thread_content = format_thread_context(thread_messages) if len(thread_messages) > 1 else ""
                         
                         # Generate classification prompt
                         classification_prompt = get_classification_prompt(email_content, thread_content)
                         
+                        if config.DEBUG:
+                            print(f"Classifying email with subject: {email_content.split('Subject: ')[1].split('From:')[0].strip() if 'Subject: ' in email_content else 'No Subject'}")
+                        
                         try:
                             # Use the agent to classify
                             classifier_agent = Agent(
                                 model=OpenAIChat(id=config.DEFAULT_MODEL),
-                                system_prompt="You are an expert email classifier. Follow the rules precisely and return only the label name.",
+                                instructions="You are an expert email classifier. Follow the rules precisely and return only the label name.",
                                 markdown=False
                             )
                             
                             response = classifier_agent.run(classification_prompt)
                             
                             # Extract and validate label from response
-                            label = validate_label(response.content.strip())
+                            raw_label = response.content.strip()
+                            label = validate_label(raw_label)
                             
                             if config.DEBUG:
-                                print(f"Classified email as: {label}")
+                                print(f"AI response: '{raw_label}' -> Validated label: '{label}'")
                         
                         except Exception as e:
                             if config.DEBUG:
-                                print(f"Error in classification: {e}")
+                                print(f"Error in AI classification: {e}")
                             label = "History"  # Default fallback
                     
                     # Apply the label
@@ -222,10 +228,12 @@ def classify_all_emails(max_emails: int = 500) -> str:
                         label_id = agent.label_ids[label]
                         agent.service.users().messages().modify(
                             userId='me',
-                            id=email['id'],
+                            id=email_id,
                             body={'addLabelIds': [label_id]}
                         ).execute()
                         success = True
+                        if config.DEBUG:
+                            print(f"Successfully applied label '{label}' to email {email_id}")
                     else:
                         success = False
                         if config.DEBUG:
@@ -234,20 +242,20 @@ def classify_all_emails(max_emails: int = 500) -> str:
                     if success:
                         classified_count += 1
                         classification_summary[label] += 1
-                        log_classification(email['id'], label, True)
+                        log_classification(email_id, label, True)
                         
                         # Save detailed log if debug enabled
                         if config.DEBUG:
                             email_content = extract_email_content(email)
-                            save_classification_log(email['id'], label, email_content, True)
+                            save_classification_log(email_id, label, email_content, True)
                     else:
                         error_count += 1
-                        log_classification(email['id'], label, False)
+                        log_classification(email_id, label, False)
                 
                 except Exception as e:
                     error_count += 1
                     if config.DEBUG:
-                        print(f"Error processing email {email['id']}: {e}")
+                        print(f"Error processing email {email.get('id', 'unknown')}: {e}")
         
         # Generate summary report
         summary = f"""
@@ -274,7 +282,9 @@ def classify_all_emails(max_emails: int = 500) -> str:
         return summary
     
     except Exception as e:
-        return f"❌ Error in classification process: {e}"
+        import traceback
+        error_details = traceback.format_exc() if config.DEBUG else str(e)
+        return f"❌ Error in classification process: {error_details}"
 
 def main():
     """Main function to run the setup agent"""
