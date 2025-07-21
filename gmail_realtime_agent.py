@@ -1,13 +1,13 @@
 """
-Gmail Real-time Email Classification Agent
-This agent classifies new incoming emails in real-time.
+Gmail Real-time Email Classification Agent - DeepSeek Only (FINAL FIX)
+This agent classifies new incoming emails in real-time using DeepSeek AI.
 """
 
 import sys
 from typing import List, Dict, Any
 from agno.agent import Agent
 from agno.tools import tool
-from agno.models.openai import OpenAIChat
+from agno.models.deepseek import DeepSeek
 from config import config
 from gmail_auth import gmail_auth
 from utils import (
@@ -19,6 +19,14 @@ from utils import (
     save_classification_log
 )
 
+def get_deepseek_model():
+    """Get DeepSeek model with proper configuration"""
+    return DeepSeek(
+        id=config.DEFAULT_MODEL,
+        api_key=config.DEEPSEEK_API_KEY,
+        base_url="https://api.deepseek.com"
+    )
+
 class GmailRealtimeAgent:
     def __init__(self):
         self.service = None
@@ -28,7 +36,7 @@ class GmailRealtimeAgent:
     def initialize(self):
         """Initialize the agent with Gmail authentication"""
         if config.DEBUG:
-            print("Initializing Gmail Real-time Agent...")
+            print("Initializing Gmail Real-time Agent with DeepSeek...")
             config.print_config()
         
         # Validate configuration
@@ -56,254 +64,228 @@ class GmailRealtimeAgent:
             
             if config.DEBUG:
                 print(f"Loaded {len(self.label_ids)} classification labels")
+                print(f"Available labels: {list(self.label_ids.keys())}")
                 
         except Exception as e:
             print(f"Error loading labels: {e}")
+
+# Global instance for tool functions
+_realtime_agent_instance = None
+
+def get_realtime_agent_instance():
+    """Get the global agent instance"""
+    global _realtime_agent_instance
+    if _realtime_agent_instance is None:
+        _realtime_agent_instance = GmailRealtimeAgent()
+        _realtime_agent_instance.initialize()
+    return _realtime_agent_instance
+
+def _classify_single_email(message_id: str) -> str:
+    """Internal function to classify a single email (not a tool)"""
+    agent = get_realtime_agent_instance()
     
-    @tool(
-        name="get_email_by_id",
-        description="Retrieve a specific email by ID",
-        show_result=False
-    )
-    def get_email_by_id(self, message_id: str) -> Dict:
-        """Retrieve a specific email by its ID"""
-        if not self.service:
-            return {}
-        
+    if config.DEBUG:
+        print(f"Starting DeepSeek AI classification for email: {message_id}")
+    
+    # Get the email
+    if not agent.service:
+        return "❌ Error: Gmail service not authenticated"
+    
+    try:
+        email_data = agent.service.users().messages().get(userId='me', id=message_id).execute()
+        if config.DEBUG:
+            print(f"Retrieved email: {message_id}")
+    except Exception as e:
+        return f"❌ Error retrieving email {message_id}: {e}"
+    
+    # Get thread context
+    thread_id = email_data.get('threadId')
+    thread_messages = [email_data]
+    
+    if thread_id:
         try:
-            message = self.service.users().messages().get(userId='me', id=message_id).execute()
+            thread = agent.service.users().threads().get(userId='me', id=thread_id).execute()
+            thread_messages = thread.get('messages', [])
+            thread_messages.sort(key=lambda x: int(x['internalDate']))
             if config.DEBUG:
-                print(f"Retrieved email: {message_id}")
-            return message
+                print(f"Retrieved {len(thread_messages)} messages from thread: {thread_id}")
         except Exception as e:
-            print(f"Error retrieving email {message_id}: {e}")
-            return {}
-    
-    @tool(
-        name="get_thread_messages",
-        description="Get all messages in a thread",
-        show_result=False
-    )
-    def get_thread_messages(self, thread_id: str) -> List[Dict]:
-        """Get all messages in a thread for context"""
-        if not self.service:
-            return []
-        
-        try:
-            thread = self.service.users().threads().get(userId='me', id=thread_id).execute()
-            messages = thread.get('messages', [])
-            
-            # Sort messages by date
-            messages.sort(key=lambda x: int(x['internalDate']))
-            
             if config.DEBUG:
-                print(f"Retrieved {len(messages)} messages from thread: {thread_id}")
-                
-            return messages
-        except Exception as e:
-            print(f"Error retrieving thread {thread_id}: {e}")
-            return []
+                print(f"Error retrieving thread {thread_id}: {e}")
     
-    @tool(
-        name="classify_new_email",
-        description="Classify a new email based on content and thread context",
-        show_result=True
-    )
-    def classify_new_email(self, message_id: str) -> str:
-        """
-        Classify a new email based on the classification rules.
+    # Get the last message in the thread (most recent)
+    last_message = thread_messages[-1] if thread_messages else email_data
+    
+    # Extract email content
+    email_content = extract_email_content(last_message)
+    thread_content = format_thread_context(thread_messages) if len(thread_messages) > 1 else ""
+    
+    # Generate classification prompt
+    classification_prompt = get_classification_prompt(email_content, thread_content)
+    
+    try:
+        # Use DeepSeek to classify
+        classifier_agent = Agent(
+            model=get_deepseek_model(),
+            instructions="You are an expert email classifier. Follow the rules precisely and return only the label name.",
+            markdown=False
+        )
         
-        Args:
-            message_id: ID of the email to classify
-            
-        Returns:
-            str: The label assigned and classification result
-        """
+        response = classifier_agent.run(classification_prompt)
+        
+        # Extract and validate label from response
+        label = validate_label(response.content.strip())
+        
+        # Apply the label
+        success = False
+        if label in agent.label_ids:
+            try:
+                label_id = agent.label_ids[label]
+                agent.service.users().messages().modify(
+                    userId='me',
+                    id=message_id,
+                    body={'addLabelIds': [label_id]}
+                ).execute()
+                success = True
+                if config.DEBUG:
+                    print(f"Applied label '{label}' to message {message_id}")
+            except Exception as e:
+                if config.DEBUG:
+                    print(f"Error applying label {label} to message {message_id}: {e}")
+        else:
+            if config.DEBUG:
+                print(f"Label '{label}' not found in available labels")
+                print(f"Available labels: {list(agent.label_ids.keys())}")
+        
+        # Log the result
+        log_classification(message_id, label, success)
+        
+        # Save detailed log if debug enabled
+        if config.DEBUG:
+            save_classification_log(message_id, label, email_content, success)
+        
+        if success:
+            return f"✅ Email `{message_id}` successfully classified as: **{label}** using DeepSeek AI"
+        else:
+            return f"⚠️ Email `{message_id}` classified as: **{label}**, but failed to apply label (label may not exist)"
+    
+    except Exception as e:
+        error_msg = f"❌ Error classifying email {message_id} with DeepSeek: {e}"
+        if config.DEBUG:
+            import traceback
+            print(traceback.format_exc())
+        return error_msg
+
+@tool(
+    name="classify_email_by_id",
+    description="Classify a specific email using DeepSeek AI",
+    show_result=True
+)
+def classify_email_by_id(message_id: str) -> str:
+    """Classify a specific email by its ID using DeepSeek AI"""
+    return _classify_single_email(message_id)
+
+@tool(
+    name="classify_latest_email_tool",
+    description="Find and classify the most recent email using DeepSeek AI",
+    show_result=True
+)
+def classify_latest_email_tool() -> str:
+    """Find and classify the most recent email"""
+    agent = get_realtime_agent_instance()
+    
+    if not agent.service:
+        return "❌ Gmail service not authenticated"
+    
+    try:
+        # Get the most recent email
+        results = agent.service.users().messages().list(
+            userId='me', 
+            q='in:inbox',
+            maxResults=1
+        ).execute()
+        
+        messages = results.get('messages', [])
+        if not messages:
+            return "📭 No emails found in inbox"
+        
+        latest_message_id = messages[0]['id']
         
         if config.DEBUG:
-            print(f"Starting classification for email: {message_id}")
+            print(f"Found latest email: {latest_message_id}")
         
-        # Get the email
-        email_data = self.get_email_by_id(message_id)
-        if not email_data:
-            return "❌ Error: Could not retrieve email"
+        # Use the internal function to classify
+        return _classify_single_email(latest_message_id)
         
-        # Get thread context
-        thread_id = email_data.get('threadId')
-        thread_messages = self.get_thread_messages(thread_id) if thread_id else [email_data]
-        
-        # Get the last message in the thread (most recent)
-        last_message = thread_messages[-1] if thread_messages else email_data
-        
-        # Extract email content
-        email_content = extract_email_content(last_message)
-        thread_content = format_thread_context(thread_messages) if len(thread_messages) > 1 else ""
-        
-        # Generate classification prompt
-        classification_prompt = get_classification_prompt(email_content, thread_content)
-        
-        try:
-            # Use the agent to classify
-            classifier_agent = Agent(
-                model=OpenAIChat(id=config.DEFAULT_MODEL),
-                system_prompt="You are an expert email classifier. Follow the rules precisely and return only the label name.",
-                markdown=False
-            )
-            
-            response = classifier_agent.run(classification_prompt)
-            
-            # Extract and validate label from response
-            label = validate_label(response.content.strip())
-            
-            # Apply the label
-            success = self.apply_label(message_id, label)
-            
-            # Log the result
-            log_classification(message_id, label, success)
-            
-            # Save detailed log if debug enabled
-            if config.DEBUG:
-                save_classification_log(message_id, label, email_content, success)
-            
-            if success:
-                return f"✅ Email `{message_id}` successfully classified as: **{label}**"
-            else:
-                return f"⚠️ Email `{message_id}` classified as: **{label}**, but failed to apply label (label may not exist)"
-        
-        except Exception as e:
-            error_msg = f"❌ Error classifying email {message_id}: {e}"
-            if config.DEBUG:
-                import traceback
-                print(traceback.format_exc())
-            return error_msg
+    except Exception as e:
+        error_msg = f"❌ Error finding latest email: {e}"
+        if config.DEBUG:
+            import traceback
+            print(traceback.format_exc())
+        return error_msg
+
+@tool(
+    name="classify_multiple_recent_emails",
+    description="Get and classify multiple recent emails using DeepSeek AI",
+    show_result=True
+)
+def classify_multiple_recent_emails(count: int = 5) -> str:
+    """Classify multiple recent emails"""
+    agent = get_realtime_agent_instance()
     
-    @tool(
-        name="apply_label_to_email",
-        description="Apply a label to an email",
-        show_result=False
-    )
-    def apply_label(self, message_id: str, label_name: str) -> bool:
-        """Apply a label to an email"""
-        if not self.service or label_name not in self.label_ids:
-            if config.DEBUG:
-                print(f"Cannot apply label {label_name}: service={bool(self.service)}, label_exists={label_name in self.label_ids}")
-                if label_name not in self.label_ids:
-                    print(f"Available labels: {list(self.label_ids.keys())}")
-            return False
-        
-        try:
-            label_id = self.label_ids[label_name]
-            self.service.users().messages().modify(
-                userId='me',
-                id=message_id,
-                body={'addLabelIds': [label_id]}
-            ).execute()
-            
-            if config.DEBUG:
-                print(f"Applied label '{label_name}' to message {message_id}")
-            return True
-            
-        except Exception as e:
-            if config.DEBUG:
-                print(f"Error applying label {label_name} to message {message_id}: {e}")
-            return False
+    if not agent.service:
+        return "❌ Gmail service not authenticated"
     
-    @tool(
-        name="classify_latest_email",
-        description="Find and classify the most recent email",
-        show_result=True
-    )
-    def classify_latest_email(self) -> str:
-        """Find and classify the most recent email"""
-        if not self.service:
-            return "❌ Gmail service not authenticated"
+    try:
+        # Get recent emails
+        results = agent.service.users().messages().list(
+            userId='me', 
+            q='in:inbox',
+            maxResults=count
+        ).execute()
         
-        try:
-            # Get the most recent email
-            results = self.service.users().messages().list(
-                userId='me', 
-                q='in:inbox',
-                maxResults=1
-            ).execute()
-            
-            messages = results.get('messages', [])
-            if not messages:
-                return "📭 No emails found in inbox"
-            
-            latest_message_id = messages[0]['id']
-            
-            if config.DEBUG:
-                print(f"Found latest email: {latest_message_id}")
-            
-            return self.classify_new_email(latest_message_id)
-            
-        except Exception as e:
-            error_msg = f"❌ Error finding latest email: {e}"
-            if config.DEBUG:
-                import traceback
-                print(traceback.format_exc())
-            return error_msg
-    
-    @tool(
-        name="get_recent_emails",
-        description="Get and classify multiple recent emails",
-        show_result=True
-    )
-    def classify_recent_emails(self, count: int = 5) -> str:
-        """Classify multiple recent emails"""
-        if not self.service:
-            return "❌ Gmail service not authenticated"
+        messages = results.get('messages', [])
+        if not messages:
+            return "📭 No emails found in inbox"
         
-        try:
-            # Get recent emails
-            results = self.service.users().messages().list(
-                userId='me', 
-                q='in:inbox',
-                maxResults=count
-            ).execute()
-            
-            messages = results.get('messages', [])
-            if not messages:
-                return "📭 No emails found in inbox"
-            
-            summary = f"🔄 Classifying {len(messages)} recent emails...\n\n"
-            success_count = 0
-            
-            for i, message in enumerate(messages):
-                message_id = message['id']
-                try:
-                    result = self.classify_new_email(message_id)
-                    if "successfully classified" in result:
-                        success_count += 1
-                    summary += f"{i+1}. {result}\n"
-                except Exception as e:
-                    summary += f"{i+1}. ❌ Error processing {message_id}: {e}\n"
-            
-            summary += f"\n📊 **Summary:** {success_count}/{len(messages)} emails classified successfully"
-            return summary
-            
-        except Exception as e:
-            error_msg = f"❌ Error processing recent emails: {e}"
-            if config.DEBUG:
-                import traceback
-                print(traceback.format_exc())
-            return error_msg
+        summary = f"🔄 Classifying {len(messages)} recent emails using DeepSeek AI...\n\n"
+        success_count = 0
+        
+        for i, message in enumerate(messages):
+            message_id = message['id']
+            try:
+                # Use the internal function to classify
+                result = _classify_single_email(message_id)
+                if "successfully classified" in result:
+                    success_count += 1
+                summary += f"{i+1}. {result}\n"
+            except Exception as e:
+                summary += f"{i+1}. ❌ Error processing {message_id}: {e}\n"
+        
+        summary += f"\n📊 **Summary:** {success_count}/{len(messages)} emails classified successfully by DeepSeek AI"
+        return summary
+        
+    except Exception as e:
+        error_msg = f"❌ Error processing recent emails: {e}"
+        if config.DEBUG:
+            import traceback
+            print(traceback.format_exc())
+        return error_msg
 
 def create_realtime_agent(message_id: str = None, count: int = None):
     """Create and run the real-time classification agent"""
     
     try:
-        # Initialize the agent
-        realtime_agent = GmailRealtimeAgent()
-        realtime_agent.initialize()
+        # Initialize the agent instance
+        agent_instance = get_realtime_agent_instance()
         
         # Create the Agno agent with tools
         agent = Agent(
-            model=OpenAIChat(id=config.DEFAULT_MODEL),
+            model=get_deepseek_model(),
             tools=[
-                realtime_agent.classify_new_email,
-                realtime_agent.classify_latest_email,
-                realtime_agent.classify_recent_emails
+                classify_email_by_id,
+                classify_latest_email_tool, 
+                classify_multiple_recent_emails
             ],
             show_tool_calls=config.DEBUG,
             markdown=True
@@ -311,23 +293,23 @@ def create_realtime_agent(message_id: str = None, count: int = None):
         
         if message_id:
             # Classify specific email
-            print(f"🎯 Classifying specific email: {message_id}")
+            print(f"🎯 Classifying specific email: {message_id} using DeepSeek AI")
             agent.print_response(
                 f"Please classify the email with ID: {message_id}",
                 stream=True
             )
         elif count:
             # Classify multiple recent emails
-            print(f"📬 Classifying {count} recent emails...")
+            print(f"📬 Classifying {count} recent emails using DeepSeek AI...")
             agent.print_response(
-                f"Please classify the {count} most recent emails in the inbox.",
+                f"Please classify the {count} most recent emails in the inbox using DeepSeek AI.",
                 stream=True
             )
         else:
             # Classify latest email
-            print("📧 Finding and classifying the most recent email...")
+            print("📧 Finding and classifying the most recent email using DeepSeek AI...")
             agent.print_response(
-                "Please find and classify the most recent email in the inbox.",
+                "Please find and classify the most recent email in the inbox using DeepSeek AI.",
                 stream=True
             )
     
@@ -341,7 +323,7 @@ def main():
     """Main function for real-time email classification"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Gmail Real-time Email Classification Agent')
+    parser = argparse.ArgumentParser(description='Gmail Real-time Email Classification Agent with DeepSeek AI')
     parser.add_argument('message_id', nargs='?', help='Specific email message ID to classify')
     parser.add_argument('--count', '-c', type=int, help='Number of recent emails to classify')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')

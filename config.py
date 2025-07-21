@@ -1,5 +1,6 @@
 """
-Configuration settings for Gmail Email Classification System
+Configuration settings for Gmail Email Classification System - DeepSeek Only
+FIXED: Using Gmail-approved colors only
 """
 import os
 from typing import List, Dict
@@ -11,9 +12,9 @@ load_dotenv()
 class Config:
     """Configuration class for Gmail classification agents"""
     
-    # OpenAI Configuration
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "gpt-4")
+    # DeepSeek API Configuration
+    DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
+    DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "deepseek-chat")
     
     # Gmail API Configuration
     GMAIL_CREDENTIALS_FILE: str = os.getenv("GMAIL_CREDENTIALS_FILE", "credentials.json")
@@ -29,35 +30,36 @@ class Config:
         "⏳ Awaiting Reply", 
         "📄 FYI",
         "✅ Done",
-        "🗑️ Junk",  # Using "Junk" with emoji instead of "Spam"
+        "🗑️ Junk",
         "📚 History"
     ]
     
-    # Gmail's accepted color palette (based on your suggestions)
+    # Gmail's OFFICIALLY APPROVED color palette only!
+    # Source: https://developers.google.com/gmail/api/v1/reference/users/labels
     LABEL_COLORS: Dict[str, Dict[str, str]] = {
         "⏳ Awaiting Reply": {
-            "backgroundColor": "#76a5af",  # Cool teal
-            "textColor": "#000000"
+            "backgroundColor": "#4a86e8",  # Gmail blue - official color
+            "textColor": "#ffffff"
         },
         "✅ Done": {
-            "backgroundColor": "#93c47d",  # Greenish tone
-            "textColor": "#000000"
+            "backgroundColor": "#16a766",  # Gmail green - official color
+            "textColor": "#ffffff"
         },
         "📄 FYI": {
-            "backgroundColor": "#6fa8dc",  # Blue, matches info purpose
-            "textColor": "#000000"
+            "backgroundColor": "#6d9eeb",  # Gmail light blue - official color
+            "textColor": "#ffffff"
         },
         "📋 To Do": {
-            "backgroundColor": "#f6b26b",  # Orange-ish, like a task color
+            "backgroundColor": "#ffad47",  # Gmail orange - official color
             "textColor": "#000000"
         },
         "📚 History": {
-            "backgroundColor": "#cccccc",  # Neutral, subdued
+            "backgroundColor": "#cccccc",  # Gmail gray - official color
             "textColor": "#000000"
         },
         "🗑️ Junk": {
-            "backgroundColor": "#e06666",  # Red-tinted, alerts attention
-            "textColor": "#000000"
+            "backgroundColor": "#cc3a21",  # Gmail red - official color
+            "textColor": "#ffffff"
         }
     }
     
@@ -77,8 +79,8 @@ class Config:
     @classmethod
     def validate(cls) -> bool:
         """Validate configuration settings"""
-        if not cls.OPENAI_API_KEY:
-            print("Warning: OPENAI_API_KEY not set in environment variables")
+        if not cls.DEEPSEEK_API_KEY:
+            print("Warning: DEEPSEEK_API_KEY not set in environment variables")
             return False
         
         if not os.path.exists(cls.GMAIL_CREDENTIALS_FILE):
@@ -91,12 +93,17 @@ class Config:
     def print_config(cls):
         """Print current configuration (excluding sensitive info)"""
         print("Gmail Classification System Configuration:")
+        print(f"  AI Provider: DeepSeek")
         print(f"  Model: {cls.DEFAULT_MODEL}")
         print(f"  History Days: {cls.HISTORY_DAYS}")
         print(f"  Labels: {cls.LABELS}")
         print(f"  Debug Mode: {cls.DEBUG}")
         print(f"  Credentials File: {cls.GMAIL_CREDENTIALS_FILE}")
         print(f"  Token File: {cls.GMAIL_TOKEN_FILE}")
+        
+        # Show API key (masked)
+        if cls.DEEPSEEK_API_KEY:
+            print(f"  DeepSeek API Key: sk-...{cls.DEEPSEEK_API_KEY[-8:]}")
 
 # Create global config instance
 config = Config()

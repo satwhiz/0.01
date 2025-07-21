@@ -1,5 +1,5 @@
 """
-Utility functions for Gmail email classification
+Utility functions for Gmail email classification - IMPROVED
 """
 import base64
 import json
@@ -150,7 +150,7 @@ def format_thread_context(thread_messages: List[Dict[str, Any]]) -> str:
 
 def get_classification_prompt(email_content: str, thread_content: str = "") -> str:
     """
-    Generate the classification prompt for the AI model
+    Generate the THREAD-AWARE classification prompt for the AI model
     
     Args:
         email_content: Content of the email to classify
@@ -159,7 +159,7 @@ def get_classification_prompt(email_content: str, thread_content: str = "") -> s
     Returns:
         Formatted prompt for classification
     """
-    return f"""**Gmail Email Classifier – Label Assignment Instructions**
+    return f"""**Gmail Email Classifier – THREAD-AWARE Label Assignment Instructions**
 
 You are an AI agent responsible for classifying Gmail emails into one of the following **mutually exclusive** labels:
 • To Do
@@ -169,113 +169,108 @@ You are an AI agent responsible for classifying Gmail emails into one of the fol
 • Junk
 • History
 
-Use the following **rules, definitions, and label hierarchy** to classify each email based on its content and context.
+**CRITICAL: Analyze the ENTIRE conversation thread to understand the flow and completion status.**
 
 **1. To Do**
-**Definition:** Label an email as **To Do** if it requires the **user to take action**, such as replying, reviewing, scheduling, or making a decision.
+**Definition:** Label as **To Do** if **OTHERS are asking the USER to take action**.
 
-**Include if:**
-• The email requests a reply, input, task, or approval
-• The email includes meeting invites or requires calendar coordination
-• Someone is asking for something to be completed, reviewed, or decided
-
-**Rules:**
-• Applies **only while user action is pending**
-• If the user has already replied, re-evaluate:
-  - If others are expected to respond → move to **Awaiting Reply**
-  - If the thread is complete → move to **History**
+**Key Indicators:**
+• Someone is requesting something FROM the user
+• Email asks the user to provide, complete, approve, or decide something
+• External parties need the user to respond or do work
 
 **Examples:**
+• "Kindly provide Memorandum and Article of Association"
+• "Please submit your report by Friday"  
 • "Can you approve this by EOD?"
-• "Are you available for a call tomorrow?"  
-• "Please confirm your attendance"
-• "Can you complete the work by tomorrow?"
+• "Kindly update the Addendum with the Date and share the scanned copy"
 
 **2. Awaiting Reply**
-**Definition:** Label an email as **Awaiting Reply** if the **user has replied**, and is now **waiting on someone else** to take action or respond.
+**Definition:** Label as **Awaiting Reply** if the **USER is asking others to take action** or waiting for responses.
 
-**Rules:**
-• Applies only **after the user has taken action**
-• Thread is still **active**, but responsibility is now on another person
+**Key Indicators:**
+• The user has asked questions or made requests
+• The user is waiting for others to provide information or feedback
+• The user has delegated tasks and is expecting updates
+• The user asked "Could you help me figure out..." or similar
 
 **Examples:**
-• "I've shared the document, waiting for your feedback"
-• "Let me know what you decide"
-• "Following up on the earlier thread"
+• "Could you help me figure out the date for the same?"
+• "Please let me know your availability"
+• "I've sent the documents, please review and confirm"
+• "What's the status on the project?"
 
 **3. FYI**
-**Definition:** Label an email as **FYI** if it is **purely informational**. These messages are for **awareness only** and require **no action or reply**.
-
-**Rules:**
-• No action, decision, or engagement expected
-• May contain useful context or updates
+**Definition:** Pure information sharing with **no action required from anyone**.
 
 **Examples:**
 • "Monthly performance dashboard is now available"
-• "Here's the new policy update for your reference"
+• "Here's the policy update for your reference"
 • "Team event photos from last week"
 
 **4. Done**
-**Definition:** Label an email as **Done** if it is clear that **no action is needed** and **no response is expected**.
+**Definition:** Conversation is **complete** with no further action needed.
 
-**Use Done when:**
-• The email was sent to **acknowledge**, **thank**, or **close a conversation**
-• It communicates **completion, agreement, or confirmation**
+**THREAD COMPLETION INDICATORS:**
+• User provides final deliverable without asking questions
+• User says "Please find attached" as final response to a request
+• User completes a requested task and doesn't ask for anything more
+• Conversation naturally concludes after request fulfillment
 
 **Examples:**
-• "Thanks, I've noted that"
-• "All good from my side"
-• "Looks fine. No changes needed"
+• "Please find the attached document. Thanks, Gaurav" (after being asked for a document)
+• "Here's the final report you requested"
+• "Completed as requested. Let me know if you need anything else"
+• "All set from my end"
 
 **5. Junk**
-**Definition:** Label an email as **Junk** if it is **promotional, automated, or low-value**, and does **not require attention**.
-
-**Typical categories:**
-• Ads and marketing emails
-• App or service notifications  
-• Social updates or newsletters
-• Promotional content and sales pitches
-
-**Examples:**
-• "Flash Sale: 50% off this weekend only!"
-• "You've unlocked a new badge"
-• "Your weekly usage report is ready"
-• "Turn Your Image Into a Professional Video"
-• "Wednesday Web Drop + Our new competitor research service"
+**Definition:** Promotional, automated, or low-value emails.
 
 **6. History**
-**Definition:** Label an email as **History** if it is part of a **resolved, inactive, or archived thread**.
+**Definition:** Old, resolved, or archived conversations.
 
-**Rules:**
-• Use if the thread is **closed**, **acknowledged**, or **previously replied to** but now inactive
-• Also used when a **To Do** was replied to, and **no further action** is expected
+**THREAD-AWARE Classification Algorithm:**
 
-**Examples:**
-• "Thanks for your input. All sorted now"
-• "Noted, closing this issue"
-• "Appreciate the update — no further questions"
+1. **ANALYZE THE FULL CONVERSATION THREAD:**
+   - What was the original request?
+   - What has been provided/completed?
+   - Is this the final step in the conversation?
 
-**Classification Algorithm (Decision Sequence)**
-Classify each email using the following order:
+2. **IDENTIFY THE CURRENT EMAIL'S PURPOSE:**
+   - Is the user FULFILLING a previous request? → Likely **Done**
+   - Is the user ASKING for something new? → **Awaiting Reply**
+   - Is someone REQUESTING something from the user? → **To Do**
 
-1. **Check for To Do** → If user action or reply is required, label as **To Do**
-2. **If not To Do, check for Awaiting Reply** → If user is waiting for others after having replied → **Awaiting Reply**
-3. **If not Awaiting Reply, check for FYI** → If email is purely informational → **FYI**
-4. **If not FYI, check for Done** → If no action is needed, but it's a conclusion/acknowledgment message → **Done**
-5. **If not Done, check for Junk** → If email is promotional or auto-generated → **Junk**
-6. **If none of the above apply**, label as **History**
+3. **CHECK FOR COMPLETION PATTERNS:**
+   - "Please find attached" + no new questions = **Done**
+   - "Thanks" + final deliverable = **Done**
+   - Simple acknowledgment after task completion = **Done**
+
+4. **CONVERSATION FLOW ANALYSIS:**
+   - If others asked for X, and user provides X without asking anything = **Done**
+   - If others asked for X, and user provides X BUT asks for Y = **Awaiting Reply**
+   - If others ask for X in this email = **To Do**
 
 **Email Content to Classify:**
 {email_content}
 
 {thread_content}
 
+**CRITICAL THREAD ANALYSIS EXAMPLE:**
+Thread: 
+1. Others: "Please provide documents A, B, C"
+2. User: "Here are A, B. Could you help with date for C?"
+3. Others: "Date should be March 26. Please provide updated C"
+4. User: "Please find the attached document. Thanks"
+
+Email #4 classification: **Done** (user fulfilled final request, no new questions, conversation complete)
+
 **Instructions:**
-1. Analyze the email content and thread context carefully
-2. Apply the classification rules in the exact order specified above
-3. Return ONLY the label name: {', '.join(config.LABELS)}
-4. Be decisive - choose the FIRST rule that applies
-5. For emails asking for tasks, responses, or decisions, always choose "To Do"
+1. **Read the ENTIRE thread context** to understand the conversation flow
+2. **Identify if this email COMPLETES a previous request**
+3. **Check if the user is asking for anything NEW**
+4. **Determine if conversation is FINISHED or CONTINUING**
+5. **Return ONLY the label name**: To Do, Awaiting Reply, FYI, Done, Junk, History
 
 Classification:"""
 

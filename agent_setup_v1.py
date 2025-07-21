@@ -1,6 +1,7 @@
 """
-Gmail Email Classification Setup Agent
-This agent creates labels and classifies all existing emails in Gmail.
+Gmail Email Classification Setup Agent - DeepSeek Only (FIXED)
+This agent creates labels and classifies all existing emails in Gmail using DeepSeek AI.
+NO OPENAI IMPORTS!
 """
 
 import os
@@ -8,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from agno.agent import Agent
 from agno.tools import tool
-from agno.models.openai import OpenAIChat
+from agno.models.deepseek import DeepSeek  # ONLY DEEPSEEK IMPORT
 from config import config
 from gmail_auth import gmail_auth
 from utils import (
@@ -24,6 +25,14 @@ from utils import (
 # Global instance for tool functions
 _setup_agent_instance = None
 
+def get_deepseek_model():
+    """Get DeepSeek model with proper configuration - NO OPENAI"""
+    return DeepSeek(
+        id=config.DEFAULT_MODEL,
+        api_key=config.DEEPSEEK_API_KEY,
+        base_url="https://api.deepseek.com"
+    )
+
 class GmailSetupAgent:
     def __init__(self):
         self.service = None
@@ -34,7 +43,7 @@ class GmailSetupAgent:
     def initialize(self):
         """Initialize the agent with Gmail authentication"""
         if config.DEBUG:
-            print("Initializing Gmail Setup Agent...")
+            print("Initializing Gmail Setup Agent with DeepSeek...")
             config.print_config()
         
         # Validate configuration
@@ -143,17 +152,18 @@ def create_labels() -> str:
 
 @tool(
     name="classify_all_emails",
-    description="Classify all emails in Gmail and apply appropriate labels",
+    description="Classify all emails in Gmail using DeepSeek AI and apply appropriate labels",
     show_result=True
 )
 def classify_all_emails(max_emails: int = 500) -> str:
-    """Main function to classify all emails"""
+    """Main function to classify all emails using DeepSeek"""
     agent = get_setup_agent_instance()
     
     if not agent.service:
         return "❌ Gmail service not authenticated"
     
     print(f"🔄 Starting classification of up to {max_emails} emails...")
+    print(f"🤖 Using DeepSeek AI with model {config.DEFAULT_MODEL}")
     
     try:
         # Get all messages in inbox
@@ -208,11 +218,7 @@ def classify_all_emails(max_emails: int = 500) -> str:
             # Sort messages by date
             thread_messages.sort(key=lambda x: int(x['internalDate']))
             
-            # OPTION: Classify only the latest email per thread (comment/uncomment as needed)
-            # latest_email = thread_messages[-1]  # Only classify the latest email
-            # emails_to_classify = [latest_email]
-            
-            # CURRENT: Classify each message in the thread individually
+            # Classify each message in the thread individually
             emails_to_classify = thread_messages
             
             for email in emails_to_classify:
@@ -226,7 +232,7 @@ def classify_all_emails(max_emails: int = 500) -> str:
                             print(f"Email {email_id} is older than {agent.history_days} days - auto-classified as History")
                     else:
                         if config.DEBUG:
-                            print(f"Email {email_id} is recent - running AI classification")
+                            print(f"Email {email_id} is recent - running DeepSeek AI classification")
                         
                         # Extract email content for the current email
                         email_content = extract_email_content(email)
@@ -240,9 +246,9 @@ def classify_all_emails(max_emails: int = 500) -> str:
                             print(f"Classifying email with subject: {subject}")
                         
                         try:
-                            # Use the agent to classify
+                            # Use ONLY DeepSeek to classify - NO OPENAI
                             classifier_agent = Agent(
-                                model=OpenAIChat(id=config.DEFAULT_MODEL),
+                                model=get_deepseek_model(),
                                 instructions="You are an expert email classifier. Follow the rules precisely and return only the label name.",
                                 markdown=False
                             )
@@ -254,11 +260,11 @@ def classify_all_emails(max_emails: int = 500) -> str:
                             label = validate_label(raw_label)
                             
                             if config.DEBUG:
-                                print(f"AI response: '{raw_label}' -> Validated label: '{label}'")
+                                print(f"DeepSeek response: '{raw_label}' -> Validated label: '{label}'")
                         
                         except Exception as e:
                             if config.DEBUG:
-                                print(f"Error in AI classification: {e}")
+                                print(f"Error in DeepSeek AI classification: {e}")
                             label = "📚 History"  # Default fallback
                     
                     # Apply the label
@@ -313,7 +319,7 @@ def classify_all_emails(max_emails: int = 500) -> str:
             percentage = (count/len(emails)*100) if len(emails) > 0 else 0
             summary += f"• {label}: {count} emails ({percentage:.1f}%)\n"
         
-        summary += f"\n⚙️ **Settings Used:**\n• History threshold: {agent.history_days} days\n• Model: {config.DEFAULT_MODEL}"
+        summary += f"\n⚙️ **Settings Used:**\n• AI Provider: DeepSeek\n• Model: {config.DEFAULT_MODEL}\n• History threshold: {agent.history_days} days"
         
         if config.DEBUG:
             summary += f"\n\n📝 Detailed logs saved to: classification_log.json"
@@ -326,11 +332,11 @@ def classify_all_emails(max_emails: int = 500) -> str:
         return f"❌ Error in classification process: {error_details}"
 
 def main():
-    """Main function to run the setup agent"""
+    """Main function to run the setup agent - DEEPSEEK ONLY"""
     try:
-        # Create the Agno agent with tools
+        # Create the Agno agent with ONLY DeepSeek model - NO OPENAI
         agent = Agent(
-            model=OpenAIChat(id=config.DEFAULT_MODEL),
+            model=get_deepseek_model(),
             tools=[
                 create_labels,
                 classify_all_emails
@@ -340,11 +346,12 @@ def main():
         )
         
         # Run the setup process
-        print("🚀 Starting Gmail Email Classification Setup...")
+        print("🚀 Starting Gmail Email Classification Setup with DeepSeek...")
+        print("🤖 Using DeepSeek AI for intelligent email classification")
         print("This will create colorful labels and classify all emails in your inbox.\n")
         
         agent.print_response(
-            "Please create the Gmail labels with colors first, then classify all existing emails according to the classification rules.",
+            "Please create the Gmail labels with colors first, then classify all existing emails according to the classification rules using DeepSeek AI.",
             stream=True
         )
     
