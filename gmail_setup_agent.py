@@ -1,6 +1,6 @@
 """
-Gmail Email Classification Setup Agent - FIXED VERSION
-This agent creates labels and classifies all existing emails in Gmail.
+Gmail Email Classification Setup Agent - ENHANCED VERSION with Colorful Labels
+This agent creates beautiful labels and classifies all existing emails in Gmail.
 """
 
 import os
@@ -56,11 +56,11 @@ def get_setup_agent_instance():
 
 @tool(
     name="create_gmail_labels",
-    description="Create Gmail labels for email classification",
+    description="Create beautiful Gmail labels with colors and emojis for email classification",
     show_result=True
 )
 def create_labels() -> str:
-    """Create the required Gmail labels if they don't exist"""
+    """Create the required Gmail labels with colors and emojis"""
     agent = get_setup_agent_instance()
     
     if not agent.service:
@@ -72,51 +72,82 @@ def create_labels() -> str:
         existing_labels = {label['name']: label['id'] for label in results.get('labels', [])}
         
         created_labels = []
+        updated_labels = []
+        
         for label_name in agent.labels:
             if label_name not in existing_labels:
-                # Skip creating SPAM label as Gmail has a built-in SPAM label
-                if label_name.upper() == "SPAM":
-                    # Find Gmail's built-in SPAM label
-                    spam_label = next((label for label in results.get('labels', []) 
-                                     if label['name'] == 'SPAM'), None)
-                    if spam_label:
-                        existing_labels["SPAM"] = spam_label['id']
-                        if config.DEBUG:
-                            print("Using Gmail's built-in SPAM label")
-                    continue
-                
+                # Create new label with color and emoji
                 label_body = {
                     'name': label_name,
                     'labelListVisibility': 'labelShow',
                     'messageListVisibility': 'show'
                 }
                 
+                # Add color if defined
+                if label_name in config.LABEL_COLORS:
+                    label_body['color'] = config.LABEL_COLORS[label_name]
+                
                 try:
                     label = agent.service.users().labels().create(userId='me', body=label_body).execute()
                     created_labels.append(label_name)
                     existing_labels[label_name] = label['id']
                     if config.DEBUG:
-                        print(f"Created label: {label_name}")
+                        print(f"Created colorful label: {label_name}")
                 except Exception as e:
                     print(f"Error creating label {label_name}: {e}")
+            else:
+                # Update existing label with color if it doesn't have one
+                if label_name in config.LABEL_COLORS:
+                    try:
+                        label_id = existing_labels[label_name]
+                        current_label = agent.service.users().labels().get(userId='me', id=label_id).execute()
+                        
+                        # Only update if color is not set
+                        if 'color' not in current_label or not current_label['color']:
+                            update_body = {
+                                'id': label_id,
+                                'name': label_name,
+                                'color': config.LABEL_COLORS[label_name]
+                            }
+                            agent.service.users().labels().update(userId='me', id=label_id, body=update_body).execute()
+                            updated_labels.append(label_name)
+                            if config.DEBUG:
+                                print(f"Updated label with color: {label_name}")
+                    except Exception as e:
+                        if config.DEBUG:
+                            print(f"Error updating label {label_name}: {e}")
         
         agent.label_ids = existing_labels
         
+        result_msg = "🎨 **Label Setup Complete!**\n\n"
+        
         if created_labels:
-            return f"✅ Created new labels: {', '.join(created_labels)}\n📋 Total available labels: {', '.join([label for label in existing_labels.keys() if label in agent.labels])}"
-        else:
-            return f"📋 All required labels already exist: {', '.join([label for label in existing_labels.keys() if label in agent.labels])}"
+            result_msg += f"✨ **Created new colorful labels:**\n"
+            for label in created_labels:
+                result_msg += f"  • {label}\n"
+        
+        if updated_labels:
+            result_msg += f"\n🎨 **Updated labels with colors:**\n"
+            for label in updated_labels:
+                result_msg += f"  • {label}\n"
+        
+        available_classification_labels = [label for label in existing_labels.keys() if label in agent.labels]
+        result_msg += f"\n📋 **Available classification labels:** {len(available_classification_labels)}\n"
+        for label in available_classification_labels:
+            result_msg += f"  • {label}\n"
+        
+        return result_msg
     
     except Exception as e:
         return f"❌ Error managing labels: {e}"
 
 @tool(
     name="classify_all_emails",
-    description="Classify all emails in Gmail and apply appropriate labels",
+    description="Classify all emails in Gmail and apply appropriate colorful labels",
     show_result=True
 )
 def classify_all_emails(max_emails: int = 500) -> str:
-    """Main function to classify all emails"""
+    """Main function to classify all emails with improved label handling"""
     agent = get_setup_agent_instance()
     
     if not agent.service:
@@ -182,16 +213,16 @@ def classify_all_emails(max_emails: int = 500) -> str:
                 try:
                     email_id = email['id']
                     
-                    # FIXED: Check if email is older than history_days
+                    # Check if email is older than history_days
                     if is_email_old(email, agent.history_days):
-                        label = "History"
+                        label = "📚 History"  # Use emoji version
                         if config.DEBUG:
                             print(f"Email {email_id} is older than {agent.history_days} days - auto-classified as History")
                     else:
                         if config.DEBUG:
                             print(f"Email {email_id} is recent - running AI classification")
                         
-                        # Extract email content for the current email (not just the last one)
+                        # Extract email content for the current email
                         email_content = extract_email_content(email)
                         thread_content = format_thread_context(thread_messages) if len(thread_messages) > 1 else ""
                         
@@ -199,7 +230,8 @@ def classify_all_emails(max_emails: int = 500) -> str:
                         classification_prompt = get_classification_prompt(email_content, thread_content)
                         
                         if config.DEBUG:
-                            print(f"Classifying email with subject: {email_content.split('Subject: ')[1].split('From:')[0].strip() if 'Subject: ' in email_content else 'No Subject'}")
+                            subject = email_content.split('Subject: ')[1].split('\nFrom:')[0].strip() if 'Subject: ' in email_content else 'No Subject'
+                            print(f"Classifying email with subject: {subject}")
                         
                         try:
                             # Use the agent to classify
@@ -213,7 +245,7 @@ def classify_all_emails(max_emails: int = 500) -> str:
                             
                             # Extract and validate label from response
                             raw_label = response.content.strip()
-                            label = validate_label(raw_label)
+                            label = validate_label(raw_label)  # This now maps to emoji version
                             
                             if config.DEBUG:
                                 print(f"AI response: '{raw_label}' -> Validated label: '{label}'")
@@ -221,7 +253,7 @@ def classify_all_emails(max_emails: int = 500) -> str:
                         except Exception as e:
                             if config.DEBUG:
                                 print(f"Error in AI classification: {e}")
-                            label = "History"  # Default fallback
+                            label = "📚 History"  # Default fallback with emoji
                     
                     # Apply the label
                     if label in agent.label_ids:
@@ -237,7 +269,8 @@ def classify_all_emails(max_emails: int = 500) -> str:
                     else:
                         success = False
                         if config.DEBUG:
-                            print(f"Label {label} not found in available labels")
+                            print(f"Label '{label}' not found in available labels")
+                            print(f"Available labels: {list(agent.label_ids.keys())}")
                     
                     if success:
                         classified_count += 1
@@ -259,7 +292,7 @@ def classify_all_emails(max_emails: int = 500) -> str:
         
         # Generate summary report
         summary = f"""
-🎉 Email Classification Complete!
+🎉 **Email Classification Complete!**
 
 📈 **Results Summary:**
 - Total emails processed: {len(emails)}
@@ -302,10 +335,10 @@ def main():
         
         # Run the setup process
         print("🚀 Starting Gmail Email Classification Setup...")
-        print("This will create labels and classify all emails in your inbox.\n")
+        print("This will create beautiful colorful labels and classify all emails in your inbox.\n")
         
         agent.print_response(
-            "Please create the Gmail labels first, then classify all existing emails according to the classification rules.",
+            "Please create the beautiful Gmail labels with colors and emojis first, then classify all existing emails according to the classification rules.",
             stream=True
         )
     

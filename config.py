@@ -1,8 +1,8 @@
 """
-Configuration settings for Gmail Email Classification System
+Configuration settings for Gmail Email Classification System - SIMPLE FIXED VERSION
 """
 import os
-from typing import List
+from typing import List, Dict
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -23,15 +23,43 @@ class Config:
     # Classification Settings
     HISTORY_DAYS: int = int(os.getenv("HISTORY_DAYS", "10"))
     
-    # Default Labels
+    # SIMPLIFIED: Use simple labels without emojis for now (to avoid confusion)
     DEFAULT_LABELS: List[str] = [
         "To Do",
         "Awaiting Reply", 
         "FYI",
         "Done",
-        "SPAM",  # Use Gmail's built-in SPAM label
+        "Spam",  # FIXED: Consistent with AI output
         "History"
     ]
+    
+    # Label colors for Gmail (we'll add these later when emoji issue is resolved)
+    LABEL_COLORS: Dict[str, Dict[str, str]] = {
+        "To Do": {
+            "backgroundColor": "#fb4c2f",  # Red
+            "textColor": "#ffffff"
+        },
+        "Awaiting Reply": {
+            "backgroundColor": "#ffad47",  # Orange  
+            "textColor": "#ffffff"
+        },
+        "FYI": {
+            "backgroundColor": "#42d692",  # Green
+            "textColor": "#ffffff"
+        },
+        "Done": {
+            "backgroundColor": "#16a766",  # Dark Green
+            "textColor": "#ffffff"
+        },
+        "Spam": {
+            "backgroundColor": "#8e24aa",  # Purple
+            "textColor": "#ffffff"
+        },
+        "History": {
+            "backgroundColor": "#a4a4a4",  # Gray
+            "textColor": "#ffffff"
+        }
+    }
     
     # Custom labels from environment (if provided)
     CUSTOM_LABELS: List[str] = []

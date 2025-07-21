@@ -1,5 +1,5 @@
 """
-Utility functions for Gmail email classification - FIXED VERSION
+Utility functions for Gmail email classification - SIMPLE FIXED VERSION
 """
 import base64
 import json
@@ -93,7 +93,7 @@ def extract_message_body(payload: Dict[str, Any]) -> str:
 
 def is_email_old(email_data: Dict[str, Any], days: int = None) -> bool:
     """
-    Check if email is older than specified days - FIXED VERSION
+    Check if email is older than specified days
     
     Args:
         email_data: Gmail message object
@@ -113,7 +113,7 @@ def is_email_old(email_data: Dict[str, Any], days: int = None) -> bool:
         
         is_old = email_date < cutoff_date
         
-        # ADDED: Debug logging to understand what's happening
+        # Debug logging
         if config.DEBUG:
             print(f"Email date: {email_date.strftime('%Y-%m-%d %H:%M:%S')}")
             print(f"Cutoff date: {cutoff_date.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -124,7 +124,6 @@ def is_email_old(email_data: Dict[str, Any], days: int = None) -> bool:
     except (KeyError, ValueError, TypeError) as e:
         if config.DEBUG:
             print(f"Error checking email age: {e}")
-            # If we can't determine the age, treat as recent to ensure AI classification
         return False
 
 def format_thread_context(thread_messages: List[Dict[str, Any]]) -> str:
@@ -235,11 +234,14 @@ Use the following **rules, definitions, and label hierarchy** to classify each e
 • Ads and marketing emails
 • App or service notifications  
 • Social updates or newsletters
+• Promotional content and sales pitches
 
 **Examples:**
 • "Flash Sale: 50% off this weekend only!"
 • "You've unlocked a new badge"
 • "Your weekly usage report is ready"
+• "Turn Your Image Into a Professional Video"
+• "Wednesday Web Drop + Our new competitor research service"
 
 **6. History**
 **Definition:** Label an email as **History** if it is part of a **resolved, inactive, or archived thread**.
@@ -279,7 +281,7 @@ Classification:"""
 
 def validate_label(label: str) -> str:
     """
-    Validate and normalize label name
+    SIMPLIFIED: Validate and normalize label name - no emoji mapping for now
     
     Args:
         label: Label name to validate
@@ -296,17 +298,17 @@ def validate_label(label: str) -> str:
     # Case-insensitive match
     for valid_label in config.LABELS:
         if label.lower() == valid_label.lower():
+            if config.DEBUG:
+                print(f"Case-insensitive match: '{label}' -> '{valid_label}'")
             return valid_label
     
-    # Partial match (case-insensitive for SPAM/Spam)
-    for valid_label in config.LABELS:
-        if (label.lower() == valid_label.lower() or 
-            (label.lower() == "spam" and valid_label == "SPAM") or
-            (label == "SPAM" and valid_label.lower() == "spam")):
-            return valid_label
+    # Handle legacy SPAM -> Spam
+    if label.upper() == "SPAM":
+        return "Spam"
     
     if config.DEBUG:
         print(f"Invalid label '{label}', using 'History' as fallback")
+        print(f"Available labels: {config.LABELS}")
     
     return "History"  # Default fallback
 
@@ -351,29 +353,23 @@ def save_classification_log(message_id: str, label: str, email_content: str, suc
     except Exception as e:
         print(f"Error saving classification log: {e}")
 
-# ADDED: Test function to verify date parsing
-def test_email_age():
-    """Test function to verify email age calculation"""
-    print("🧪 Testing email age calculation...")
+# Test function
+def test_label_mapping():
+    """Test function to verify label mapping works correctly"""
+    print("🧪 Testing label mapping...")
     
-    # Create a test email data structure
-    now = datetime.now()
-    
-    # Test cases
     test_cases = [
-        ("1 day ago", now - timedelta(days=1)),
-        ("5 days ago", now - timedelta(days=5)),
-        ("15 days ago", now - timedelta(days=15)),
-        ("Today", now),
+        "To Do",
+        "Spam", 
+        "SPAM",
+        "spam",
+        "History",
+        "Invalid Label"
     ]
     
-    for test_name, test_date in test_cases:
-        # Convert to Gmail's millisecond timestamp format
-        test_timestamp = int(test_date.timestamp() * 1000)
-        test_email = {'internalDate': str(test_timestamp)}
-        
-        is_old = is_email_old(test_email, 10)
-        print(f"{test_name}: {test_date.strftime('%Y-%m-%d %H:%M:%S')} -> {'Old' if is_old else 'Recent'}")
+    for test_label in test_cases:
+        result = validate_label(test_label)
+        print(f"'{test_label}' -> '{result}'")
 
 if __name__ == "__main__":
     # Run test if this file is executed directly
@@ -381,4 +377,4 @@ if __name__ == "__main__":
     sys.path.append('.')
     from config import config
     config.DEBUG = True
-    test_email_age()
+    test_label_mapping()
