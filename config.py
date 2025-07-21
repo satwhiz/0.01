@@ -1,5 +1,5 @@
 """
-Configuration settings for Gmail Email Classification System - SIMPLE FIXED VERSION
+Configuration settings for Gmail Email Classification System
 """
 import os
 from typing import List, Dict
@@ -23,41 +23,41 @@ class Config:
     # Classification Settings
     HISTORY_DAYS: int = int(os.getenv("HISTORY_DAYS", "10"))
     
-    # SIMPLIFIED: Use simple labels without emojis for now (to avoid confusion)
+    # Email Classification Labels with emojis
     DEFAULT_LABELS: List[str] = [
-        "To Do",
-        "Awaiting Reply", 
-        "FYI",
-        "Done",
-        "Spam",  # FIXED: Consistent with AI output
-        "History"
+        "📋 To Do",
+        "⏳ Awaiting Reply", 
+        "📄 FYI",
+        "✅ Done",
+        "🗑️ Junk",  # Using "Junk" with emoji instead of "Spam"
+        "📚 History"
     ]
     
-    # Label colors for Gmail (we'll add these later when emoji issue is resolved)
+    # Gmail's accepted color palette (based on your suggestions)
     LABEL_COLORS: Dict[str, Dict[str, str]] = {
-        "To Do": {
-            "backgroundColor": "#fb4c2f",  # Red
-            "textColor": "#ffffff"
+        "⏳ Awaiting Reply": {
+            "backgroundColor": "#76a5af",  # Cool teal
+            "textColor": "#000000"
         },
-        "Awaiting Reply": {
-            "backgroundColor": "#ffad47",  # Orange  
-            "textColor": "#ffffff"
+        "✅ Done": {
+            "backgroundColor": "#93c47d",  # Greenish tone
+            "textColor": "#000000"
         },
-        "FYI": {
-            "backgroundColor": "#42d692",  # Green
-            "textColor": "#ffffff"
+        "📄 FYI": {
+            "backgroundColor": "#6fa8dc",  # Blue, matches info purpose
+            "textColor": "#000000"
         },
-        "Done": {
-            "backgroundColor": "#16a766",  # Dark Green
-            "textColor": "#ffffff"
+        "📋 To Do": {
+            "backgroundColor": "#f6b26b",  # Orange-ish, like a task color
+            "textColor": "#000000"
         },
-        "Spam": {
-            "backgroundColor": "#8e24aa",  # Purple
-            "textColor": "#ffffff"
+        "📚 History": {
+            "backgroundColor": "#cccccc",  # Neutral, subdued
+            "textColor": "#000000"
         },
-        "History": {
-            "backgroundColor": "#a4a4a4",  # Gray
-            "textColor": "#ffffff"
+        "🗑️ Junk": {
+            "backgroundColor": "#e06666",  # Red-tinted, alerts attention
+            "textColor": "#000000"
         }
     }
     

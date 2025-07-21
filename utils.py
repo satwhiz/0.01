@@ -1,5 +1,5 @@
 """
-Utility functions for Gmail email classification - SIMPLE FIXED VERSION
+Utility functions for Gmail email classification
 """
 import base64
 import json
@@ -166,7 +166,7 @@ You are an AI agent responsible for classifying Gmail emails into one of the fol
 • Awaiting Reply  
 • FYI
 • Done
-• Spam
+• Junk
 • History
 
 Use the following **rules, definitions, and label hierarchy** to classify each email based on its content and context.
@@ -227,8 +227,8 @@ Use the following **rules, definitions, and label hierarchy** to classify each e
 • "All good from my side"
 • "Looks fine. No changes needed"
 
-**5. Spam**
-**Definition:** Label an email as **Spam** if it is **promotional, automated, or low-value**, and does **not require attention**.
+**5. Junk**
+**Definition:** Label an email as **Junk** if it is **promotional, automated, or low-value**, and does **not require attention**.
 
 **Typical categories:**
 • Ads and marketing emails
@@ -262,7 +262,7 @@ Classify each email using the following order:
 2. **If not To Do, check for Awaiting Reply** → If user is waiting for others after having replied → **Awaiting Reply**
 3. **If not Awaiting Reply, check for FYI** → If email is purely informational → **FYI**
 4. **If not FYI, check for Done** → If no action is needed, but it's a conclusion/acknowledgment message → **Done**
-5. **If not Done, check for Spam** → If email is promotional or auto-generated → **Spam**
+5. **If not Done, check for Junk** → If email is promotional or auto-generated → **Junk**
 6. **If none of the above apply**, label as **History**
 
 **Email Content to Classify:**
@@ -280,37 +280,33 @@ Classify each email using the following order:
 Classification:"""
 
 def validate_label(label: str) -> str:
-    """
-    SIMPLIFIED: Validate and normalize label name - no emoji mapping for now
-    
-    Args:
-        label: Label name to validate
-        
-    Returns:
-        Valid label name or default fallback
-    """
+    """Validate and normalize label name with emoji mapping"""
     label = label.strip()
     
-    # Direct match
+    # Map AI responses to emoji labels
+    ai_to_emoji_mapping = {
+        "To Do": "📋 To Do",
+        "Awaiting Reply": "⏳ Awaiting Reply",
+        "FYI": "📄 FYI",
+        "Done": "✅ Done", 
+        "Junk": "🗑️ Junk",
+        "Spam": "🗑️ Junk",  # Map both Spam and SPAM to Junk
+        "SPAM": "🗑️ Junk",
+        "History": "📚 History"
+    }
+    
+    # Direct mapping from AI response
+    if label in ai_to_emoji_mapping:
+        result = ai_to_emoji_mapping[label]
+        if config.DEBUG:
+            print(f"Mapped AI label '{label}' to emoji label '{result}'")
+        return result
+    
+    # Direct match with emoji labels
     if label in config.LABELS:
         return label
     
-    # Case-insensitive match
-    for valid_label in config.LABELS:
-        if label.lower() == valid_label.lower():
-            if config.DEBUG:
-                print(f"Case-insensitive match: '{label}' -> '{valid_label}'")
-            return valid_label
-    
-    # Handle legacy SPAM -> Spam
-    if label.upper() == "SPAM":
-        return "Spam"
-    
-    if config.DEBUG:
-        print(f"Invalid label '{label}', using 'History' as fallback")
-        print(f"Available labels: {config.LABELS}")
-    
-    return "History"  # Default fallback
+    return "📚 History"  # Default fallback
 
 def log_classification(message_id: str, label: str, success: bool):
     """
@@ -360,7 +356,7 @@ def test_label_mapping():
     
     test_cases = [
         "To Do",
-        "Spam", 
+        "Junk", 
         "SPAM",
         "spam",
         "History",
