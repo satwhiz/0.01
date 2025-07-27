@@ -1,7 +1,6 @@
 """
 Gmail Email Classification Setup Agent - DeepSeek Only (FIXED)
 This agent creates labels and classifies all existing emails in Gmail using DeepSeek AI.
-NO OPENAI IMPORTS!
 """
 
 import os
