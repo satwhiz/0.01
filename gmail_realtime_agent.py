@@ -1,6 +1,8 @@
 """
 Gmail Real-time Email Classification Agent - DeepSeek Only (FINAL FIX)
 This agent classifies new incoming emails in real-time using DeepSeek AI.
+ENHANCED: Now includes email drafting for "To Do" emails.
+UPDATED: Uses separate system prompt files for better code structure.
 """
 
 import sys
@@ -18,6 +20,8 @@ from utils import (
     log_classification,
     save_classification_log
 )
+from prompts.classification_system_prompt import CLASSIFICATION_SYSTEM_PROMPT
+from email_drafting_agent import create_draft_for_todo_email
 
 def get_deepseek_model():
     """Get DeepSeek model with proper configuration"""
@@ -164,10 +168,29 @@ def _classify_single_email(message_id: str) -> str:
         if config.DEBUG:
             save_classification_log(message_id, label, email_content, success)
         
+        # ✨ NEW FEATURE: Auto-draft email if classified as "To Do"
+        result_message = ""
         if success:
-            return f"✅ Email `{message_id}` successfully classified as: **{label}** using DeepSeek AI"
+            result_message = f"✅ Email `{message_id}` successfully classified as: **{label}** using DeepSeek AI"
+            
+            # Check if this email needs a draft (classified as "To Do")
+            if label == "📋 To Do":
+                print("\n" + "="*80)
+                print("🎯 EMAIL CLASSIFIED AS 'TO DO' - GENERATING DRAFT...")
+                print("="*80)
+                
+                try:
+                    draft_content = create_draft_for_todo_email(message_id)
+                    print(draft_content)
+                    result_message += f"\n\n🎯 **Auto-Draft Generated**: Email draft has been created for this 'To Do' email (see above)."
+                except Exception as e:
+                    error_msg = f"⚠️ Draft generation failed: {e}"
+                    print(f"\n{error_msg}")
+                    result_message += f"\n\n{error_msg}"
         else:
-            return f"⚠️ Email `{message_id}` classified as: **{label}**, but failed to apply label (label may not exist)"
+            result_message = f"⚠️ Email `{message_id}` classified as: **{label}**, but failed to apply label (label may not exist)"
+        
+        return result_message
     
     except Exception as e:
         error_msg = f"❌ Error classifying email {message_id} with DeepSeek: {e}"
@@ -178,7 +201,7 @@ def _classify_single_email(message_id: str) -> str:
 
 @tool(
     name="classify_email_by_id",
-    description="Classify a specific email using DeepSeek AI",
+    description="Classify a specific email using DeepSeek AI and create draft if it's 'To Do'",
     show_result=True
 )
 def classify_email_by_id(message_id: str) -> str:
@@ -187,7 +210,7 @@ def classify_email_by_id(message_id: str) -> str:
 
 @tool(
     name="classify_latest_email_tool",
-    description="Find and classify the most recent email using DeepSeek AI",
+    description="Find and classify the most recent email using DeepSeek AI and create draft if it's 'To Do'",
     show_result=True
 )
 def classify_latest_email_tool() -> str:
@@ -226,7 +249,7 @@ def classify_latest_email_tool() -> str:
 
 @tool(
     name="classify_multiple_recent_emails",
-    description="Get and classify multiple recent emails using DeepSeek AI",
+    description="Get and classify multiple recent emails using DeepSeek AI and create drafts for 'To Do' emails",
     show_result=True
 )
 def classify_multiple_recent_emails(count: int = 5) -> str:
@@ -250,6 +273,7 @@ def classify_multiple_recent_emails(count: int = 5) -> str:
         
         summary = f"🔄 Classifying {len(messages)} recent emails using DeepSeek AI...\n\n"
         success_count = 0
+        todo_draft_count = 0
         
         for i, message in enumerate(messages):
             message_id = message['id']
@@ -258,11 +282,16 @@ def classify_multiple_recent_emails(count: int = 5) -> str:
                 result = _classify_single_email(message_id)
                 if "successfully classified" in result:
                     success_count += 1
+                if "Auto-Draft Generated" in result:
+                    todo_draft_count += 1
                 summary += f"{i+1}. {result}\n"
             except Exception as e:
                 summary += f"{i+1}. ❌ Error processing {message_id}: {e}\n"
         
         summary += f"\n📊 **Summary:** {success_count}/{len(messages)} emails classified successfully by DeepSeek AI"
+        if todo_draft_count > 0:
+            summary += f"\n📝 **Drafts Generated:** {todo_draft_count} email drafts created for 'To Do' emails"
+        
         return summary
         
     except Exception as e:
@@ -294,6 +323,7 @@ def create_realtime_agent(message_id: str = None, count: int = None):
         if message_id:
             # Classify specific email
             print(f"🎯 Classifying specific email: {message_id} using DeepSeek AI")
+            print("📝 Auto-draft will be generated if email is classified as 'To Do'\n")
             agent.print_response(
                 f"Please classify the email with ID: {message_id}",
                 stream=True
@@ -301,6 +331,7 @@ def create_realtime_agent(message_id: str = None, count: int = None):
         elif count:
             # Classify multiple recent emails
             print(f"📬 Classifying {count} recent emails using DeepSeek AI...")
+            print("📝 Auto-drafts will be generated for any emails classified as 'To Do'\n")
             agent.print_response(
                 f"Please classify the {count} most recent emails in the inbox using DeepSeek AI.",
                 stream=True
@@ -308,6 +339,7 @@ def create_realtime_agent(message_id: str = None, count: int = None):
         else:
             # Classify latest email
             print("📧 Finding and classifying the most recent email using DeepSeek AI...")
+            print("📝 Auto-draft will be generated if email is classified as 'To Do'\n")
             agent.print_response(
                 "Please find and classify the most recent email in the inbox using DeepSeek AI.",
                 stream=True
@@ -323,7 +355,7 @@ def main():
     """Main function for real-time email classification"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Gmail Real-time Email Classification Agent with DeepSeek AI')
+    parser = argparse.ArgumentParser(description='Gmail Real-time Email Classification Agent with DeepSeek AI + Auto-Drafting')
     parser.add_argument('message_id', nargs='?', help='Specific email message ID to classify')
     parser.add_argument('--count', '-c', type=int, help='Number of recent emails to classify')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
@@ -334,6 +366,10 @@ def main():
     if args.debug:
         config.DEBUG = True
         config.VERBOSE_LOGGING = True
+    
+    print("🚀 Gmail Real-time Classification + Auto-Drafting Agent")
+    print("📝 Automatic email drafts will be generated for 'To Do' emails")
+    print("=" * 80)
     
     if args.message_id:
         create_realtime_agent(message_id=args.message_id)
