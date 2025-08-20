@@ -1,6 +1,6 @@
 """
 Configuration settings for Gmail Email Classification System - DeepSeek Only
-FIXED: Using Gmail-approved colors only
+UPDATED: Now includes Google Calendar integration support
 """
 import os
 from typing import List, Dict
@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    """Configuration class for Gmail classification agents"""
+    """Configuration class for Gmail classification agents with calendar support"""
     
     # DeepSeek API Configuration
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
@@ -19,7 +19,18 @@ class Config:
     # Gmail API Configuration
     GMAIL_CREDENTIALS_FILE: str = os.getenv("GMAIL_CREDENTIALS_FILE", "credentials.json")
     GMAIL_TOKEN_FILE: str = os.getenv("GMAIL_TOKEN_FILE", "token.json")
-    GMAIL_SCOPES: List[str] = ['https://www.googleapis.com/auth/gmail.modify']
+    
+    # Updated Gmail scopes to include Calendar access
+    GMAIL_SCOPES: List[str] = [
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://www.googleapis.com/auth/calendar'  # Added for calendar integration
+    ]
+    
+    # Calendar Configuration
+    USER_SCHEDULING_LINK: str = os.getenv("USER_SCHEDULING_LINK", "")
+    DEFAULT_MEETING_DURATION: int = int(os.getenv("DEFAULT_MEETING_DURATION", "60"))  # minutes
+    BUSINESS_HOURS_ONLY: bool = os.getenv("BUSINESS_HOURS_ONLY", "True").lower() == "true"
+    CALENDAR_LOOKAHEAD_DAYS: int = int(os.getenv("CALENDAR_LOOKAHEAD_DAYS", "14"))
     
     # Classification Settings
     HISTORY_DAYS: int = int(os.getenv("HISTORY_DAYS", "10"))
@@ -90,6 +101,28 @@ class Config:
         return True
     
     @classmethod
+    def validate_calendar_setup(cls) -> bool:
+        """Validate calendar-specific configuration"""
+        warnings = []
+        
+        if not cls.USER_SCHEDULING_LINK:
+            warnings.append("USER_SCHEDULING_LINK not set - calendar drafts will use placeholder")
+        
+        if cls.DEFAULT_MEETING_DURATION < 15 or cls.DEFAULT_MEETING_DURATION > 480:
+            warnings.append(f"DEFAULT_MEETING_DURATION ({cls.DEFAULT_MEETING_DURATION}) should be between 15-480 minutes")
+        
+        if cls.CALENDAR_LOOKAHEAD_DAYS < 1 or cls.CALENDAR_LOOKAHEAD_DAYS > 90:
+            warnings.append(f"CALENDAR_LOOKAHEAD_DAYS ({cls.CALENDAR_LOOKAHEAD_DAYS}) should be between 1-90 days")
+        
+        if warnings:
+            print("Calendar configuration warnings:")
+            for warning in warnings:
+                print(f"  - {warning}")
+            return False
+        
+        return True
+    
+    @classmethod
     def print_config(cls):
         """Print current configuration (excluding sensitive info)"""
         print("Gmail Classification System Configuration:")
@@ -101,9 +134,16 @@ class Config:
         print(f"  Credentials File: {cls.GMAIL_CREDENTIALS_FILE}")
         print(f"  Token File: {cls.GMAIL_TOKEN_FILE}")
         
+        # Calendar configuration
+        print(f"\n  📅 Calendar Integration:")
+        print(f"  Scheduling Link: {'Configured' if cls.USER_SCHEDULING_LINK else 'Not set'}")
+        print(f"  Default Meeting Duration: {cls.DEFAULT_MEETING_DURATION} minutes")
+        print(f"  Business Hours Only: {cls.BUSINESS_HOURS_ONLY}")
+        print(f"  Calendar Lookahead: {cls.CALENDAR_LOOKAHEAD_DAYS} days")
+        
         # Show API key (masked)
         if cls.DEEPSEEK_API_KEY:
-            print(f"  DeepSeek API Key: sk-...{cls.DEEPSEEK_API_KEY[-8:]}")
+            print(f"\n  DeepSeek API Key: sk-...{cls.DEEPSEEK_API_KEY[-8:]}")
 
 # Create global config instance
 config = Config()

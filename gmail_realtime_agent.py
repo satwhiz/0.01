@@ -1,8 +1,8 @@
 """
-Gmail Real-time Email Classification Agent - DeepSeek Only (FINAL FIX)
+Gmail Real-time Email Classification Agent - DeepSeek Only (CALENDAR ENHANCED)
 This agent classifies new incoming emails in real-time using DeepSeek AI.
-ENHANCED: Now includes email drafting for "To Do" emails.
-UPDATED: Uses separate system prompt files for better code structure.
+ENHANCED: Now includes calendar-aware email drafting for "To Do" emails.
+UPDATED: Uses enhanced drafting agent with Google Calendar integration.
 """
 
 import sys
@@ -21,7 +21,7 @@ from utils import (
     save_classification_log
 )
 from prompts.classification_system_prompt import CLASSIFICATION_SYSTEM_PROMPT
-from email_drafting_agent import create_draft_for_todo_email
+from email_drafting_agent import create_calendar_aware_draft_for_todo_email
 
 def get_deepseek_model():
     """Get DeepSeek model with proper configuration"""
@@ -40,12 +40,17 @@ class GmailRealtimeAgent:
     def initialize(self):
         """Initialize the agent with Gmail authentication"""
         if config.DEBUG:
-            print("Initializing Gmail Real-time Agent with DeepSeek...")
+            print("Initializing Gmail Real-time Agent with Calendar Integration...")
             config.print_config()
         
         # Validate configuration
         if not config.validate():
             raise ValueError("Invalid configuration. Please check your settings.")
+        
+        # Validate calendar configuration
+        calendar_ok = config.validate_calendar_setup()
+        if not calendar_ok and config.DEBUG:
+            print("⚠️  Calendar configuration has warnings but will continue...")
         
         # Authenticate with Gmail
         self.service = gmail_auth.authenticate()
@@ -168,23 +173,25 @@ def _classify_single_email(message_id: str) -> str:
         if config.DEBUG:
             save_classification_log(message_id, label, email_content, success)
         
-        # ✨ NEW FEATURE: Auto-draft email if classified as "To Do"
+        # ✨ ENHANCED FEATURE: Calendar-aware auto-draft email if classified as "To Do"
         result_message = ""
         if success:
             result_message = f"✅ Email `{message_id}` successfully classified as: **{label}** using DeepSeek AI"
             
-            # Check if this email needs a draft (classified as "To Do")
+            # Check if this email needs a calendar-aware draft (classified as "To Do")
             if label == "📋 To Do":
                 print("\n" + "="*80)
-                print("🎯 EMAIL CLASSIFIED AS 'TO DO' - GENERATING DRAFT...")
+                print("🎯 EMAIL CLASSIFIED AS 'TO DO' - GENERATING CALENDAR-AWARE DRAFT...")
+                print("🗓️ Checking calendar availability and generating smart response...")
                 print("="*80)
                 
                 try:
-                    draft_content = create_draft_for_todo_email(message_id)
+                    # Use the enhanced drafting agent with calendar integration
+                    draft_content = create_calendar_aware_draft_for_todo_email(message_id)
                     print(draft_content)
-                    result_message += f"\n\n🎯 **Auto-Draft Generated**: Email draft has been created for this 'To Do' email (see above)."
+                    result_message += f"\n\n🎯 **Calendar-Aware Draft Generated**: Smart email draft with calendar integration created for this 'To Do' email (see above)."
                 except Exception as e:
-                    error_msg = f"⚠️ Draft generation failed: {e}"
+                    error_msg = f"⚠️ Calendar-aware draft generation failed: {e}"
                     print(f"\n{error_msg}")
                     result_message += f"\n\n{error_msg}"
         else:
@@ -201,7 +208,7 @@ def _classify_single_email(message_id: str) -> str:
 
 @tool(
     name="classify_email_by_id",
-    description="Classify a specific email using DeepSeek AI and create draft if it's 'To Do'",
+    description="Classify a specific email using DeepSeek AI and create calendar-aware draft if it's 'To Do'",
     show_result=True
 )
 def classify_email_by_id(message_id: str) -> str:
@@ -210,7 +217,7 @@ def classify_email_by_id(message_id: str) -> str:
 
 @tool(
     name="classify_latest_email_tool",
-    description="Find and classify the most recent email using DeepSeek AI and create draft if it's 'To Do'",
+    description="Find and classify the most recent email using DeepSeek AI and create calendar-aware draft if it's 'To Do'",
     show_result=True
 )
 def classify_latest_email_tool() -> str:
@@ -249,7 +256,7 @@ def classify_latest_email_tool() -> str:
 
 @tool(
     name="classify_multiple_recent_emails",
-    description="Get and classify multiple recent emails using DeepSeek AI and create drafts for 'To Do' emails",
+    description="Get and classify multiple recent emails using DeepSeek AI and create calendar-aware drafts for 'To Do' emails",
     show_result=True
 )
 def classify_multiple_recent_emails(count: int = 5) -> str:
@@ -271,7 +278,7 @@ def classify_multiple_recent_emails(count: int = 5) -> str:
         if not messages:
             return "📭 No emails found in inbox"
         
-        summary = f"🔄 Classifying {len(messages)} recent emails using DeepSeek AI...\n\n"
+        summary = f"🔄 Classifying {len(messages)} recent emails using DeepSeek AI with calendar integration...\n\n"
         success_count = 0
         todo_draft_count = 0
         
@@ -282,7 +289,7 @@ def classify_multiple_recent_emails(count: int = 5) -> str:
                 result = _classify_single_email(message_id)
                 if "successfully classified" in result:
                     success_count += 1
-                if "Auto-Draft Generated" in result:
+                if "Calendar-Aware Draft Generated" in result:
                     todo_draft_count += 1
                 summary += f"{i+1}. {result}\n"
             except Exception as e:
@@ -290,7 +297,7 @@ def classify_multiple_recent_emails(count: int = 5) -> str:
         
         summary += f"\n📊 **Summary:** {success_count}/{len(messages)} emails classified successfully by DeepSeek AI"
         if todo_draft_count > 0:
-            summary += f"\n📝 **Drafts Generated:** {todo_draft_count} email drafts created for 'To Do' emails"
+            summary += f"\n📝 **Calendar-Aware Drafts Generated:** {todo_draft_count} smart email drafts created for 'To Do' emails"
         
         return summary
         
@@ -302,7 +309,7 @@ def classify_multiple_recent_emails(count: int = 5) -> str:
         return error_msg
 
 def create_realtime_agent(message_id: str = None, count: int = None):
-    """Create and run the real-time classification agent"""
+    """Create and run the real-time classification agent with calendar integration"""
     
     try:
         # Initialize the agent instance
@@ -323,7 +330,7 @@ def create_realtime_agent(message_id: str = None, count: int = None):
         if message_id:
             # Classify specific email
             print(f"🎯 Classifying specific email: {message_id} using DeepSeek AI")
-            print("📝 Auto-draft will be generated if email is classified as 'To Do'\n")
+            print("📝 Calendar-aware draft will be generated if email is classified as 'To Do'\n")
             agent.print_response(
                 f"Please classify the email with ID: {message_id}",
                 stream=True
@@ -331,7 +338,7 @@ def create_realtime_agent(message_id: str = None, count: int = None):
         elif count:
             # Classify multiple recent emails
             print(f"📬 Classifying {count} recent emails using DeepSeek AI...")
-            print("📝 Auto-drafts will be generated for any emails classified as 'To Do'\n")
+            print("📝 Calendar-aware drafts will be generated for any emails classified as 'To Do'\n")
             agent.print_response(
                 f"Please classify the {count} most recent emails in the inbox using DeepSeek AI.",
                 stream=True
@@ -339,7 +346,7 @@ def create_realtime_agent(message_id: str = None, count: int = None):
         else:
             # Classify latest email
             print("📧 Finding and classifying the most recent email using DeepSeek AI...")
-            print("📝 Auto-draft will be generated if email is classified as 'To Do'\n")
+            print("📝 Calendar-aware draft will be generated if email is classified as 'To Do'\n")
             agent.print_response(
                 "Please find and classify the most recent email in the inbox using DeepSeek AI.",
                 stream=True
@@ -352,10 +359,10 @@ def create_realtime_agent(message_id: str = None, count: int = None):
             traceback.print_exc()
 
 def main():
-    """Main function for real-time email classification"""
+    """Main function for real-time email classification with calendar integration"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Gmail Real-time Email Classification Agent with DeepSeek AI + Auto-Drafting')
+    parser = argparse.ArgumentParser(description='Gmail Real-time Email Classification Agent with DeepSeek AI + Calendar-Aware Auto-Drafting')
     parser.add_argument('message_id', nargs='?', help='Specific email message ID to classify')
     parser.add_argument('--count', '-c', type=int, help='Number of recent emails to classify')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
@@ -367,8 +374,9 @@ def main():
         config.DEBUG = True
         config.VERBOSE_LOGGING = True
     
-    print("🚀 Gmail Real-time Classification + Auto-Drafting Agent")
-    print("📝 Automatic email drafts will be generated for 'To Do' emails")
+    print("🚀 Gmail Real-time Classification + Calendar-Aware Auto-Drafting Agent")
+    print("📝 Automatic calendar-aware email drafts will be generated for 'To Do' emails")
+    print("🗓️ Calendar integration checks availability and suggests meeting times")
     print("=" * 80)
     
     if args.message_id:
